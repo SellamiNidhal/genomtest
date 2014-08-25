@@ -14,6 +14,8 @@
 #
 #                                      Anthony Mallet on Tue Dec 13 2011
 #
+/****test*///
+
 
 if {[llength $argv] != 1} { error "expected arguments: component" }
 lassign $argv component

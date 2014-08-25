@@ -359,13 +359,13 @@ bip_cids= aacids;
     pthread_mutex_unlock(&cids.task_lock);
     delete a;
 
-counter +=1 ;
+counter +=1 ; // 
     return;
   }
 number_of_active_service +=1;
 
   a->accept();
-//counter +=1 ;
+
   int delay = a->interrupt();
 
   /* update state port */
