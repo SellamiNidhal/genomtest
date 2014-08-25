@@ -1,0 +1,12 @@
+#
+# GenoM3/ros pkg-config file
+#
+Name: genom3-ros
+Description: ROS Template for GenoM3
+Version: @VERSION@
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+
+Libs:	-L${libdir}

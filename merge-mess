@@ -1,0 +1,31 @@
+git merge genom3-ros
+Auto-merging server/template.tcl
+Auto-merging server/main.cc
+CONFLICT (content): Merge conflict in server/main.cc
+Auto-merging server/exec-task.cc
+CONFLICT (content): Merge conflict in server/exec-task.cc
+Auto-merging server/control-task.cc
+Auto-merging server/control-codels.cc
+CONFLICT (content): Merge conflict in server/control-codels.cc
+Auto-merging server/bip.configure.ac
+Auto-merging server/bip.Makefile.am
+Auto-merging configure.ac
+CONFLICT (content): Merge conflict in configure.ac
+Removing common/typeutil.tcl
+CONFLICT (rename/delete): common/json-common.h deleted in HEAD and renamed in genom3-ros. Version genom3-ros of common/json-common.h left in tree.
+CONFLICT (modify/delete): client/ros/client.configure.ac deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/ros/client.configure.ac left in tree.
+CONFLICT (modify/delete): client/ros/client.Makefile.am deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/ros/client.Makefile.am left in tree.
+CONFLICT (modify/delete): client/c/template.tcl deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/template.tcl left in tree.
+CONFLICT (modify/delete): client/c/ros-client.cc deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/ros-client.cc left in tree.
+CONFLICT (modify/delete): client/c/private.h deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/private.h left in tree.
+CONFLICT (modify/delete): client/c/portlib.cc deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/portlib.cc left in tree.
+CONFLICT (modify/delete): client/c/msglib.h deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/msglib.h left in tree.
+CONFLICT (modify/delete): client/c/msglib.cc deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/msglib.cc left in tree.
+CONFLICT (modify/delete): client/c/init.cc deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/init.cc left in tree.
+CONFLICT (modify/delete): client/c/info.c deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/info.c left in tree.
+CONFLICT (modify/delete): client/c/client.configure.ac deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/client.configure.ac left in tree.
+CONFLICT (modify/delete): client/c/client.cc deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/client.cc left in tree.
+CONFLICT (modify/delete): client/c/client.Makefile.am deleted in HEAD and modified in genom3-ros. Version genom3-ros of client/c/client.Makefile.am left in tree.
+Auto-merging Makefile.am
+CONFLICT (content): Merge conflict in Makefile.am
+Automatic merge failed; fix conflicts and then commit the result.

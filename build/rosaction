@@ -1,0 +1,177 @@
+#!/usr/bin/python
+#
+# Copyright (c) 2012 LAAS/CNRS
+# All rights reserved.
+#
+# Permission to use, copy, modify, and distribute this software for any purpose
+# with or without   fee is hereby granted, provided   that the above  copyright
+# notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS  SOFTWARE INCLUDING ALL  IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR  BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR  ANY DAMAGES WHATSOEVER RESULTING  FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION,   ARISING OUT OF OR IN    CONNECTION WITH THE USE   OR
+# PERFORMANCE OF THIS SOFTWARE.
+#
+#                                          Severin Lemaignan on Tue Nov 20 2012
+import sys
+import rospy
+
+class DynamicAction(object):
+    def __init__(self, name):
+        # remove "Action" string from name
+        assert("Action" in name)
+        self.name     = name[0:len(name)-6]
+        self.action   = self.load_submsg('Action')
+        self.goal     = self.load_submsg('Goal')
+        self.feedback = self.load_submsg('Feedback')
+        self.result   = self.load_submsg('Result')
+
+    def load_submsg(self, subname):
+
+        import roslib
+
+        msgclass = roslib.message.get_message_class(self.name + subname)
+        if msgclass is None:
+            print('Could not load message for: %s'%(self.name+subname))
+            sys.exit(1)
+        return msgclass
+
+
+
+#########################################################################
+#########################################################################
+def call(action_name, params):
+
+    import actionlib
+    from actionlib_msgs.msg import GoalStatus
+    import rostopic
+    import yaml
+    import genpy
+
+    # callback for the feedback channel
+    def onprogress(evt):
+        print("%s" % evt)
+
+
+    # get action type from topic
+    topic_type = rostopic._get_topic_type("%s/goal"%action_name)[0]
+
+    if not topic_type:
+        print("Can not find an action matching %s. Check it is running." % action_name)
+        sys.exit(1)
+    # remove "Goal" string from action type
+    assert("Goal" in topic_type)
+    topic_type = topic_type[0:len(topic_type)-4]
+
+    action_type = DynamicAction(topic_type)
+
+
+    print("Connecting to action server %s" % action_name)
+    client = actionlib.SimpleActionClient(action_name, action_type.action)
+
+    ok = client.wait_for_server()
+
+    if not ok:
+        print("Could not connect to the ROS action server! Aborting action")
+        sys.exit(1)
+
+
+    # Fill goal message. Copied from rostopic
+    params = [yaml.load(params)]
+    goal = action_type.goal()
+    try:
+        # Populate the message and enable substitution keys for 'now'
+        # and 'auto'. There is a corner case here: this logic doesn't
+        # work if you're publishing a Header only and wish to use
+        # 'auto' with it. This isn't a troubling case, but if we start
+        # allowing more keys in the future, it could become an actual
+        # use case. It greatly complicates logic because we'll have to
+        # do more reasoning over types. to avoid ambiguous cases
+        # (e.g. a std_msgs/String type, which only has a single string
+        # field).
+        
+        # allow the use of the 'now' string with timestamps and 'auto' with header
+        now = rospy.get_rostime() 
+        import std_msgs.msg
+        keys = { 'now': now, 'auto': std_msgs.msg.Header(stamp=now) }
+        genpy.message.fill_message_args(goal, params, keys=keys)
+    except genpy.MessageException as e:
+        print(str(e)+"\n\nArgs are: [%s]"%genpy.message.get_printable_message_args(goal))
+        sys.exit(1)
+
+
+    print("Sending goal to %s" % action_name)
+    client.send_goal(goal, feedback_cb = onprogress)
+
+    # Waits for the server to finish performing the action
+    client.wait_for_result()
+
+    # Checks if the goal was achieved
+    if client.get_state() == GoalStatus.SUCCEEDED:
+        print('ROS Action succeeded')
+        print('Result: %s' % client.get_result())
+        sys.exit(0)
+    elif client.get_state() == GoalStatus.ACTIVE:
+        # if we are here, the user has likely pressed Ctrl+C
+        # -> send an abort on our current goal.
+        client.cancel_goal()
+        print("Action aborted.")
+        sys.exit(0)
+    else:
+        print("Action failed: %s" % client.get_goal_status_text())
+        sys.exit(1)
+
+
+#########################################################################
+#########################################################################
+def actionlist():
+    import rosgraph
+
+    master = rosgraph.Master('/rosaction')
+    try:
+        state = master.getSystemState()
+
+        pubs, subs, _ = state
+    except socket.error:
+        print("Unable to communicate with master!")
+        sys.exit(1)
+
+    topics = list(set([t for t,_ in pubs] + [t for t,_ in subs]))
+    topics.sort()
+
+    # actions are assumed to be topics ending with 'goal' and 'status'
+    actions = ["/".join(t.split("/")[:-1]) for t in topics if t.endswith("goal")]
+    actions = [a for a in actions if a + "/status" in topics]
+    print('\n'.join(["%s"%t for t in actions]))
+
+
+#########################################################################
+#########################################################################
+def usage():
+    print("Usage: rosaction [call|list] [args...]")
+
+
+if __name__ == "__main__":
+
+    if len(sys.argv) == 1:
+        usage()
+        sys.exit(2)
+
+    mode = sys.argv[1]
+    rospy.init_node("rosaction", anonymous = True)
+    if mode == "call":
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("mode", help="'list' or 'call'")
+        parser.add_argument("action", help="name of the action")
+        parser.add_argument("arguments", help="goal to be send, in YAML")
+        args = parser.parse_args()
+        call(args.action,args.arguments)
+    elif mode == "list":
+        actionlist()
+    else:
+        usage()
+        sys.exit(2)

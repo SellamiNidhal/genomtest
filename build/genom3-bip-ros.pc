@@ -1,0 +1,12 @@
+#
+# GenoM3/ros pkg-config file
+#
+Name: genom3-ros
+Description: ROS Template for GenoM3
+Version: 1.1
+
+prefix=/home/nidhal/openrobots
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+
+Libs:	-L${libdir}

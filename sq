@@ -1,0 +1,142 @@
+[33mcommit 503afe660ed7590c3e8e7277265cceb313eaf781[m
+Author: Felix Ingrand <felix@laas.fr>
+Date:   Wed Feb 5 15:48:51 2014 +0100
+
+    Added some comments in the bip code.
+
+[1mdiff --git a/server/bip/model.bip b/server/bip/model.bip[m
+[1mindex 8bc6f99..bdd4c19 100644[m
+[1m--- a/server/bip/model.bip[m
+[1m+++ b/server/bip/model.bip[m
+[36m@@ -30,10 +30,10 @@[m [mheader {#[m
+ #include "../src/<"$comp">_bip-genom.h"[m
+ #}[m
+ [m
+[31m-// Declaration d'un type de port[m
+[32m+[m[32m// Declaration of a port type passing <"$comp">_event[m
+ port type <"$comp">_event_Port(<"$comp">_event e)[m
+ [m
+[31m-// declarations de types de connecteur[m
+[32m+[m[32m// declaration of a connector[m
+ // this one is not used.[m
+ connector type Synchronize_<"$comp">_event(<"$comp">_event_Port p, <"$comp">_event_Port q)[m
+   define [p q][m
+[36m@@ -347,9 +347,11 @@[m [mend	//finish the <"[$task name]">Communicate_with_Codel type declaration[m
+ <'}'>[m
+ [m
+ [m
+[32m+[m[32m// for all the execution tasks[m
+ <'foreach task [$component tasks] {'>[m
+[31m-// This compute the period of the task <"[$task name]"> in milliseconds[m
+[32m+[m
+ <' [m
+[32m+[m[32m    # This compute the period of the task in milliseconds[m
+     set ms_period [expr {int([[$task period] value]*1000)}] [m
+ '> [m
+ [m
+[36m@@ -357,13 +359,15 @@[m [matomic type exec_<"[$task name]">Task[m
+ clock x unit millisecond	// The clock to pace the task[m
+ data bool active = false[m
+ [m
+[31m-<'if {[llength [$task fsm]]} {'>[m
+[32m+[m[32m<'if {[llength [$task fsm]]} { #the task as a permanent automata/codels[m[41m [m
+[32m+[m[32m'>[m
+ [m
+ export port Port start_<"[$task name]">_codel[m
+ export port Port finish_<"[$task name]">_codel[m
+ export port Port waiting_<"[$task name]">_codel[m
+ [m
+[31m-<'} else {'> [m
+[32m+[m[32m<'} else { # no permanent automata/codels[m
+[32m+[m[32m '>[m[41m [m
+ export port Port no_permanent_<"[$task name]">[m
+ <'}'>[m
+ [m
+[36m@@ -382,12 +386,12 @@[m [mexport port Port missed_deadline[m
+ [m
+ place Start_permanent, Start[m
+ [m
+[31m-  // the place for the permanent service[m
+ <'if {[llength [$task fsm]]} {'>[m
+[32m+[m[32m// the places for the permanent service[m
+ place s2_<"[$task name]">, s3_<"[$task name]">[m
+ <'}'>[m
+ [m
+[31m-  // the place for the service[m
+[32m+[m[32m// the place for the services[m
+ <'foreach s [$task services] {'>[m
+ place s1_<"[$s name]">, s2_<"[$s name]">,  s3_<"[$s name]">[m
+ <'}'>[m
+[36m@@ -414,8 +418,9 @@[m [mon no_permanent_<"[$task name]">[m
+ //  when x in [0,<"$ms_period">] delayable[m
+     <'}'>[m
+ [m
+[31m-<'set last_place Start'>	// This is to store in last_place the last one (to connect the rest).[m
+[31m-[m
+[32m+[m[32m<'  # This is to store in last_place the last one (to connect the rest).[m
+[32m+[m[32m    set last_place Start[m[41m	[m
+[32m+[m[32m'>[m
+ [m
+ <'foreach s [$task services] {'>[m
+ on compute_active_<"[$s name]">[m
+[36m@@ -440,6 +445,7 @@[m [mon not_active_<"[$s name]">[m
+ //  when x in [0,<"$ms_period">] delayable[m
+ [m
+ <'set last_place s3_[$s name]'>[m
+[32m+[m
+ <'}'>[m
+ [m
+ on loopback[m
+[36m@@ -450,33 +456,37 @@[m [mon loopback[m
+ [m
+ on missed_deadline[m
+   from  <"$last_place"> to Start_permanent[m
+[31m-  when x in [<"$ms_period">+1,_] eager // This is the transition for missed deadline[m
+[32m+[m[32m  when x in [<"$ms_period">+1,_] eager // This is the transition for missed deadline to keep the model from deadlocking.[m
+   reset x                                         [m
+   do {#                                           [m
+[31m-  fprintf(stderr,"************** Missed deadline <"$ms_period"> ms for task <"[$task name]">. **************");[m
+[32m+[m[32m  fprintf(stderr,"******************************************************************************************\n");[m
+[32m+[m[32m  fprintf(stderr,"************** Missed deadline <"$ms_period"> ms for task <"[$task name]">. **************\n");[m
+[32m+[m[32m  fprintf(stderr,"******************************************************************************************\n");[m
+   #}[m
+ [m
+ end[m
+ [m
+ <'}'>[m
+[31m-  // Done with all the exec task[m
+[32m+[m[32m// Done with all the exec task[m
+ [m
+ compound type TOP		// The main component declaration[m
+ [m
+ <'foreach task [$component tasks] {'>[m
+[31m-[m
+[32m+[m[32m// <"[$task name]"> component[m
+ component exec_<"[$task name]">Task exec_<"[$task name]">task[m
+ [m
+ <'foreach s [$task services] {'>[m
+[31m-[m
+[32m+[m[32m// <"[$s name]"> main automata component[m
+ component <"$comp"><"[$s name]"> <"$comp"><"[$s name]">_component[m
+[32m+[m[32m// <"[$s name]"> codels execution component[m
+ component  <"[$s name]">Communicate_with_Codel  <"[$s name]">communicate_with_codel[m
+ [m
+[31m-[m
+[32m+[m[32m// Connecting all theses components with the proper connector[m
+ connector Synchronize_<"$comp"><"[$s name]">BIPState SynchronizeLaunch<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.launch_codel,  <"[$s name]">communicate_with_codel.launch_codel)[m
+ connector Synchronize_<"$comp">_event_finish SynchronizeFinish<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.finish_codel,  <"[$s name]">communicate_with_codel.finish_codel, exec_<"[$task name]">task.finish_<"[$s name]">_codel)[m
+ connector Synchronize_start SynchronizeStart<"[$s name]">start_codel(exec_<"[$task name]">task.start_<"[$s name]">_codel,  <"[$s name]">communicate_with_codel.exec_<"[$s name]">_codel)[m
+ [m
+[32m+[m[32m// Mostly singleton port which need to be exported...[m
+ connector Singleton single<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.stay_in_ether)[m
+ connector Singleton single_cu_<"$comp"><"[$s name]">(exec_<"[$task name]">task.compute_active_<"[$s name]">)[m
+ connector Singleton single_na_<"$comp"><"[$s name]">(exec_<"[$task name]">task.not_active_<"[$s name]">)[m
+[36m@@ -492,7 +502,7 @@[m [mconnector Singleton single_dl_<"[$task name]"> (exec_<"[$task name]">task.missed[m
+ [m
+ <'foreach task [$component task] {'>[m
+ <'if {[llength [$task fsm]]} {'>[m
+[31m-[m
+[32m+[m[32m// This task as a permanent codels/automata[m
+ component <"$comp"><"[$task name]"> <"$comp"><"[$task name]">_component[m
+ component  <"[$task name]">Communicate_with_Codel  <"[$task name]">communicate_with_codel[m
+ [m

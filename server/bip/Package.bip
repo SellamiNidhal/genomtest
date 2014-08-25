@@ -1,0 +1,49 @@
+<'
+# Copyright (c) 2012 LAAS/CNRS
+# All rights reserved.
+#
+# Redistribution and use  in source  and binary  forms,  with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#   1. Redistributions of  source  code must retain the  above copyright
+#      notice and this list of conditions.
+#   2. Redistributions in binary form must reproduce the above copyright
+#      notice and  this list of  conditions in the  documentation and/or
+#      other materials provided with the distribution.
+#
+#                                      Anthony Mallet on Mon Jan 16 2012
+#
+
+if {[llength $argv] != 1} { error "expected arguments: component" }
+lassign $argv component
+
+# compute handy shortcuts
+set comp [$component name]
+
+lang c
+'>
+
+
+@cpp(src="ext-cpp/<"$comp">Package.cpp",include="<"$comp">Package.hpp")
+package <"$comp">Package
+  port type <"$comp">Port_t()
+
+ atom type <"$comp">Atom()
+    data int somedata
+    port <"$comp">Port_t p(), positive(), negative()
+    place START, S, END
+    initial to START do { somedata = 0; }
+    on p from START to S do { my_modify(somedata); }
+    on negative from S to END
+      provided (my_guard(somedata))
+      do {my_print("Positive data", somedata);}
+    on positive from S to END
+      provided (!my_guard(somedata))
+      do {my_print("Negative data", somedata);}
+  end
+
+  compound type <"$comp">Compound()
+    component <"$comp">Atom c1()
+  end
+end

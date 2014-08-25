@@ -1,0 +1,786 @@
+<'
+# Copyright (c) 2012-2013 LAAS/CNRS
+# All rights reserved.
+#
+# Redistribution and use  in source  and binary  forms,  with or without
+# modification, are permitted provided that the following conditions are
+# met:
+#
+#   1. Redistributions of  source  code must retain the  above copyright
+#      notice and this list of conditions.
+#   2. Redistributions in binary form must reproduce the above copyright
+#      notice and  this list of  conditions in the  documentation and/or
+#      other materials provided with the distribution.
+#
+#                            Ahlem Triki & Felix Ingrand on Decembre 2012
+#
+
+if {[llength $argv] != 1} { error "expected arguments: component" }
+lassign $argv component
+
+# compute handy shortcuts
+set comp [$component name]
+
+lang c
+'>
+
+model <"$comp">
+
+header {#
+#include "../autoconf/acheader.h"
+#include "../src/<"$comp">_bip-genom.h"
+#include "../src/<"$comp">_internals.h"
+#include "../src/<"$comp">_activities.h"
+
+
+/* === call data  ===================================================== */
+genom_activity *act (int act) {
+genom_activity *a;
+a = cids.activities.activities[act];
+if (a->status==ACT_STOP)
+   printf ("/-/- status : ACT_STOP ");
+if (a->status==ACT_STOPPING)
+   printf ("/-/- status : ACT_STOPPING ");
+if (a->status==ACT_RUNNING)
+   printf ("/-/-ON CONTROL status : ACT_RUNNING");
+if (a->status==ACT_VOID)
+   printf ("/-/-ON CONTROL status : ACT_VOID");
+if (a->status==ACT_ETHER)
+   printf ("/-/-ON CONTROL status : ACT_ETHER");
+if (a->status==ACT_START)
+   printf ("/-/-ON CONTROL status : ACT_START");
+
+return cids.activities.activities[act]; 
+}
+
+void init_counter() {
+<'foreach s [$task services] {'>
+counter_<"[$s name]">+=1;
+<'    }'>
+
+}
+<'foreach s [$task services] {'>
+/* <"[--- data [$s name] ---------------------------------------------]"> */
+<'  foreach e [$s fsm] { set codel [$s fsm $e]'>
+<'}'>
+
+template<>
+genom_event data_<"[$s name]">:: call_data () {
+genom_event data;
+printf ("---Bip Codels : %s -----\n", codel);
+<'  foreach e [$s fsm] {'>
+
+if (codel == <"[$e cname]">) {
+	
+	data = <"$comp">_<"[$s name]">_codel_<"[$e cname]">(this);
+ 	
+printf("--BIP : data exception is : %s \n ",data );
+if (
+<'    foreach y [[$s fsm $e] yield] {'>
+        data == <"[$y cname]"> ||
+<'    }'>
+        0) { 
+      return data;
+    }
+assert(!"bad state");
+  abort();
+  return NULL;
+
+
+}
+ 
+
+<'}'>
+if (codel == <"$comp">_sleep) return <"$comp">_sleep;
+  if (codel == <"$comp">_stop) return <"$comp">_ether;
+};
+
+
+<'}'>
+
+#}
+
+// Declaration d'un type de port
+port type <"$comp">_event_Port(genom_event e)
+
+// declarations de types de connecteur
+// this one is not used.
+connector type Synchronize_<"$comp">_event(<"$comp">_event_Port p, <"$comp">_event_Port q)
+  define [p q]
+  on p q down { p.e = q.e; }
+end
+
+// this one is to synchronize the finish_codel in the communicate with
+// the codel component, the finish of the exec task, and the finish of
+// the service automata
+
+connector type Synchronize_<"$comp">_event_finish(<"$comp">_event_Port p, <"$comp">_event_Port q, Port r) 
+  define [p q r] 
+  on p q r down { p.e = q.e; } 
+end
+
+// this one synchronize the start of a codel in the exec task and the
+// start of the execution of a codel in the communicate
+
+connector type Synchronize_start(Port p, Port q)
+  define [p q]
+end
+
+connector type Singleton(Port p)
+  define [p]
+  on p
+end
+
+<'foreach s [$component services] {'>
+<'  if {![catch {$s task} t]} {'>
+
+//port type Port
+port type <"$comp"><"[$s name]">BIPState_Port(<"$comp"><"[$s name]">BIPState s)
+
+
+connector type Synchronize_<"$comp"><"[$s name]">BIPState(<"$comp"><"[$s name]">BIPState_Port p, <"$comp"><"[$s name]">BIPState_Port q)
+  define [p q]
+  on p q down { q.s = p.s; } 
+end
+
+
+// defines the main BIP automata for the <"[$s name]"> service 
+// This is the automata which mimic the <"[$s name]"> service FSM
+
+atomic type <"$comp"><"[$s name]">
+
+data <"$comp"><"[$s name]">BIPState s
+data genom_event e
+<'  if {[llength [$s validate]]} {'>
+data bool validated = false
+<' }'>
+data bool active = false
+
+export port <"$comp"><"[$s name]">BIPState_Port launch_codel(s)
+export port <"$comp">_event_Port finish_codel(e)
+
+<'foreach e [$s fsm] {'>
+port Port go_to_<"[$e name]">
+<' }'>
+port Port go_to_ether
+export port Port stay_in_ether
+<'  if {[llength [$s validate]]} {'>
+port Port go_to_validate
+port Port waiting_validate
+<' }'>
+
+<'foreach e [$s fsm] {'>
+place Place_<"[$e name]">, Executing_<"[$e name]">, Finish_<"[$e name]">
+<' }'>
+place Place_ether
+<'  if {[llength [$s validate]]} {'>
+place Place_validate
+<' }'>
+
+initial to Place_ether 
+do {# s = <"[$s name]">etherBS; 
+      bip_state_report((char *)"<"[$s name]">",(char *)"Init",(char *)"Place_ether",(char *)"<"[$s name]">etherBS");
+    #}
+
+<'  if {[llength [$s validate]]} {'>
+on waiting_validate
+   from Place_validate to Place_validate
+   provided (!validated)
+  do {#
+      validated =  (<"$comp">_<"[$s name]">_report_validate_to_bip == genom_ok);
+   #}
+
+on go_to_start
+   from Place_validate to Place_start
+   provided (validated)
+    do {#  
+
+
+/*  Bip Control Codels*/
+genom_event cb = genom_ok;
+        
+	<"$comp">_<"[$s name]">_report_validate_to_bip = demo_init;
+	s = <"[$s name]">startBS; 
+/* List of attribute*/
+double _locals,_in,_in_out,_ids;
+<"$comp">CntrlStrId *cids=0;
+<"$comp">CntrlStrId bcids;
+  genom::srv::<"[$s name]">::locals locals;
+  genom::srv::<"[$s name]">::input in;
+  genom::srv::<"[$s name]">::output out;
+
+
+
+
+ /* call validate codel */
+<'  if {[llength [$s validate]]} {'>
+<'    # build parameter list
+    set plist [list]
+    foreach p [[$s validate] parameters] {
+      switch -- [$p src] {
+        ids	{ set m "bip_cids->ids[$p member]" 
+                  set y "bip_cids->ids[$p member]"}
+        local	{
+             switch -- [[$p param] dir] {
+            local	{ set m "locals.[$p name]"
+                           }
+            in		{ set m "in.[$p name]" 
+                          set param_in "in.[$p name]" }
+            inout - out { set m "out.[$p name]"
+                          set z "out.[$p name]" }
+            default	{ error "unsupported codel parameter" }
+          }
+        }
+        default	{ error "unsupported codel parameter" }
+      }
+      switch -- [$p dir] {
+	in		{ lappend plist [[$p type] pass value $m] }
+	inout - out	{ lappend plist [[$p type] pass reference $m] }
+        default		{ error "unsupported direction" }
+      }
+    }'>
+
+<'  if {$y in $plist} {'>
+_ids = <" $y">;
+_ids =ids_position;
+ printf (" //**BIP : Actual state Position is : %f \n",_ids);
+<'  }'>
+
+<'  if {$param_in in $plist} {'>
+<" $param_in">=position_to_go;
+_in = <" $param_in">;
+
+printf (" //**BIP : Value to Go is : %f \n",<" $param_in">);
+<'  }'>
+
+cb = <"[[$s validate] invoke $plist]">;/*call codels*/
+<'  }'>
+if(
+<'  foreach t [$s throw] {'>
+    cb != <"[$t cname]">_id &&
+<'  }'>
+    1) {
+<'  if {![catch {$cb task} t]} {'>
+  
+ assert(!"@Bip Error : bad state");
+<'  }'>
+}
+if (cb)  {
+printf("--BIP Control Codel : request Rejected \n");
+printf("--BIP Control Codel info : %s \n",cb);
+validated = false;
+<"$comp">_<"[$s name]">_active = false;
+ <"$comp">_<"[$s name]">_report_validate_to_bip = demo_init;
+
+}
+else {
+printf("--BIP Control Codel : request Accepted  \n");
+bip_state_report((char *)"<"[$s name]">",(char *)"Place_validate",(char *)"Place_start",(char *)"<"[$s name]">startBS");
+validated = false;
+
+}
+
+/*End Bip Control codel*/
+
+         #}
+<' }'>
+ 
+
+<'  foreach e [$s fsm] {'>
+on launch_codel
+  from  Place_<"[$e name]"> to Executing_<"[$e name]">
+
+on finish_codel
+  from Executing_<"[$e name]"> to Finish_<"[$e name]">
+
+<'    foreach y [[$s fsm $e] yield] {'>
+on go_to_<"[$y name]">
+   from Finish_<"[$e name]"> to Place_<"[$y name]">
+   provided (enum_<"[$y name]">_<"[$s name]">(e)) 
+   do {# s = <"[$s name]"><"[$y name]">BS;
+
+<'if {[$y name] == "ether"} {'>
+   <"$comp">_<"[$s name]">_active = false;
+
+   active = false; 
+extern_active = false ;
+printf ("---------Service active is False \n");
+number_of_active_service = number_of_active_service - 1;
+printf ("------- number_of_active_service is %d \n", number_of_active_service);
+init_counter ();
+
+counter+=1;
+
+<' } '>       
+    bip_state_report((char *)"<"[$s name]">",(char *)"Finish_<"[$e name]">",(char *)"Place_<"[$y name]">",(char *)"<"[$s name]"><"[$y name]">BS"); #}
+
+<'    }'>
+<' }'>
+
+// This is to go from ether to start automtically.
+// but we should do it only when validate is OK. 
+// just added for testing request more than once.
+
+on stay_in_ether
+   from Place_ether to Place_ether
+provided (! active)
+do {#
+    while(!(<"$comp">_<"[$s name]">_active));
+    active = <"$comp">_<"[$s name]">_active;
+  #}
+
+<'  if {[llength [$s validate]]} {'>
+on go_to_validate
+   from Place_ether to Place_validate
+   provided (active)
+   do {# s = <"[$s name]">validateBS; 
+
+          bip_state_report((char *)"<"[$s name]">",(char *)"Place_ether",(char *)"Place_validate",(char *)"<"[$s name]">validateBS"); #}
+<' } else {'>
+on go_to_start
+   from Place_ether to Place_start
+   provided (active)
+    do {# s = <"[$s name]">startBS; 
+
+          bip_state_report((char *)"<"[$s name]">",(char *)"Place_ether",(char *)"Place_start",(char *)"<"[$s name]">startBS"); #}
+
+<' }'>
+end
+
+
+// defined the automata which will enable the <"[$s name]"> codels execution as well  as return the event.
+// this automata is used by all the codels of the  <"[$s name]"> service.
+atomic type <"[$s name]">Communicate_with_Codel
+data <"$comp"><"[$s name]">BIPState s
+data genom_event e
+
+//defined boolean var to evaluate exec or not exec condition
+data bool bau = true     // bau: bip_allow equal undefined, true when we loop waiting
+                          // for bip_allow to be set by the genom code.
+
+export port <"$comp"><"[$s name]">BIPState_Port launch_codel(s)
+export port <"$comp">_event_Port finish_codel(e)
+export port Port exec_<"[$s name]">_codel
+port Port waiting_start_<"[$s name]">_codel
+
+place S1, S2, S3
+
+initial to S1
+on launch_codel
+   from S1 to S2
+   do {#
+     <"$comp">_<"[$s name]">_report_to_bip = demo_init; // unlikely value to initialize it.
+     <"$comp">_<"[$s name]">_bip_allow = s;
+   #}
+
+on exec_<"[$s name]">_codel
+   from S2 to S3
+   provided (bau)
+   do {# 
+int sched,shutdown, done;
+size_t i;
+int y;
+struct timeval tvs, tve;
+printf ("----BIP : exec_<"[$s name]">_codel \n");
+
+genom_activity *act_<"[$s name]">;
+genom_state_component *state = cids.ports.genom_state.handle.data();
+genom_task_<"$tname"> &task = cids.tasks.<"$tname">;
+
+extern_active = true ;
+printf("---------Service active is true \n");
+
+printf("BIP : Activity %d yield  \n", counter_<"[$s name]">);
+printf("---------Service active is true \n");
+
+
+act_<"[$s name]">= act (counter); 
+
+/* Print activity status *//////////
+if (act_<"[$s name]">->status==ACT_STOP)
+   printf ("/-/- status : ACT_STOP ");
+if (act_<"[$s name]">->status==ACT_STOPPING)
+   printf ("/-/- status : ACT_STOPPING ");
+if (act_<"[$s name]">->status==ACT_RUNNING)
+   printf ("/-/- status : ACT_RUNNING");
+if (act_<"[$s name]">->status==ACT_VOID)
+   printf ("/-/- status : ACT_VOID");
+if (act_<"[$s name]">->status==ACT_ETHER)
+   printf ("/-/- status : ACT_ETHER");
+if (act_<"[$s name]">->status==ACT_START)
+   printf ("/-/- status : ACT_START");
+/*****end of print*/
+
+      if (!act_<"[$s name]"> || act_<"[$s name]">->task != task.id) continue;
+      if (act_<"[$s name]">->status == ACT_STOP) {
+        act_<"[$s name]">->status = ACT_STOPPING;
+        act_<"[$s name]">->codel = <"${comp}">_stop;
+      }
+      if (act_<"[$s name]">->status != ACT_RUNNING && act_<"[$s name]">->status != ACT_STOPPING)
+        continue;
+if (act_<"[$s name]">->status==ACT_STOP)
+   printf ("/-/- status : ACT_STOP \n");
+if (act_<"[$s name]">->status==ACT_STOPPING)
+   printf ("/-/- status : ACT_STOPPING \n");
+if (act_<"[$s name]">->status==ACT_RUNNING)
+   printf ("/-/- status : ACT_RUNNING \n");
+act_<"[$s name]">->codel = act_<"[$s name]">->call_data();
+e=act_<"[$s name]">->codel;
+printf("BIP : Activity After Call_data \n");
+
+if (act_<"[$s name]">->codel == NULL || act_<"[$s name]">->codel == <"$comp">_ether) {
+printf("/*/* bIP pass means x->codel == NULL || x->codel == <"$comp">_ether \n ");
+
+
+        if (act_<"[$s name]">->status == ACT_RUNNING)
+          act_<"[$s name]">->status = ACT_ETHER;
+        else
+          act_<"[$s name]">->status = ACT_STOPPED;
+        if (act_<"[$s name]">->codel == NULL)
+          act_<"[$s name]">->exdetail = (void *)genom_thrown(&act_<"[$s name]">->codel);
+        <"$comp">_cntrl_task_signal(act_<"[$s name]">);
+      } 
+if (act_<"[$s name]">->codel != <"$comp">_sleep || act_<"[$s name]">->status == ACT_STOP)
+        sched = 1;
+  /* update state port */
+      if (act_<"[$s name]">->stateid >= 0) {
+        strncpy(state->activity._buffer[act_<"[$s name]">->stateid].state,
+                act_<"[$s name]">->codel ? act_<"[$s name]">->codel : "",
+                sizeof(state->activity._buffer[act_<"[$s name]">->stateid].state));
+      }
+if (sched) <"$comp">_exec_task_signal();
+
+ /* update state port */
+  gettimeofday(&tve, NULL);
+
+    state->task._buffer[task.stateid].cputime.last =
+      tve.tv_sec - tvs.tv_sec + (tve.tv_usec - tvs.tv_usec)*1e-6;
+
+    if (state->task._buffer[task.stateid].cputime.last >
+        state->task._buffer[task.stateid].cputime.max)
+      state->task._buffer[task.stateid].cputime.max =
+        state->task._buffer[task.stateid].cputime.last;
+
+    state->task._buffer[task.stateid].cputime.avg *= 0.9;
+    state->task._buffer[task.stateid].cputime.avg +=
+      0.1 * state->task._buffer[task.stateid].cputime.last;
+    cids.ports.genom_state.publish();
+
+  
+    sched_yield(); 
+
+       #}
+
+
+on finish_codel
+   from S3 to S1		// Loop back
+
+end	//finish the <"[$s name]">Communicate_with_Codel type declaration
+
+<'}'>
+<'}'>
+
+<'foreach task [$component task] {'>
+  <'if {[llength [$task fsm]]} {'> // if the task has a permanent service (i.e. a FSM declared) we generate this.
+
+  // this is completely similar to what is done for services... so a bug there is probably a bug here ;-)
+  // and if you add something there, you should probably add it here too.
+
+//port type Port
+port type <"$comp"><"[$task name]">BIPState_Port(<"$comp"><"[$task name]">BIPState s)
+
+
+connector type Synchronize_<"$comp"><"[$task name]">BIPState(<"$comp"><"[$task name]">BIPState_Port p, <"$comp"><"[$task name]">BIPState_Port q)
+  define [p q]
+  on p q down { q.s = p.s; } 
+end
+
+
+// defines the main BIP automata for the <"[$task name]"> service 
+atomic type <"$comp"><"[$task name]">
+
+data <"$comp"><"[$task name]">BIPState s
+data genom_event e
+
+export port <"$comp"><"[$task name]">BIPState_Port launch_codel(s)
+export port <"$comp">_event_Port finish_codel(e)
+
+<'foreach e [$task fsm] {'>
+port Port go_to_<"[$e name]">
+<' }'>
+port Port go_to_ether
+
+<'foreach e [$task fsm] {'>
+place Place_<"[$e name]">, Executing_<"[$e name]">, Finish_<"[$e name]">
+<' }'>
+place Place_ether
+ 
+initial to Place_start do {# s = <"[$task name]">startBS; 
+	   	       	     bip_state_report((char *)"<"[$task name]">",(char *)"Init",(char *)"Place_start",(char *)"<"[$task name]">startBS");#}
+ 
+
+<'  foreach e [$task fsm] {'>
+on launch_codel
+  from  Place_<"[$e name]"> to Executing_<"[$e name]">
+
+on finish_codel
+  from Executing_<"[$e name]"> to Finish_<"[$e name]">
+
+<'    foreach y [[$task fsm $e] yield] {'>
+on go_to_<"[$y name]">
+   from Finish_<"[$e name]"> to Place_<"[$y name]">
+   provided (enum_<"[$y name]">_<"[$task name]">(e)) 
+   do {# s = <"[$task name]"><"[$y name]">BS;
+    bip_state_report((char *)"<"[$task name]">",(char *)"Finish_<"[$e name]">",(char *)"Place_<"[$y name]">",(char *)"<"[$task name]"><"[$y name]">BS"); #}
+
+<'    }'>
+
+// This is to go from ether to start automtically.
+// but we should do it only when validate is OK. 
+// just added for testing request more than once.
+on go_to_start
+   from Place_ether to Place_start
+    do {# s = <"[$task name]">startBS; 
+          bip_state_report((char *)"<"[$task name]">",(char *)"Place_ether",(char *)"Place_start",(char *)"<"[$task name]">startBS"); #}
+
+<' }'>
+end
+
+
+// defined the automata which will enable the codel execution as well  as return the event.
+atomic type <"[$task name]">Communicate_with_Codel
+data <"$comp"><"[$task name]">BIPState s
+data genom_event e
+//defined boolean var to evaluate exec or not exec condition
+data bool bau = true   // bau: bip_allow equal undefined, true when we loop waiting
+                          // for bip_allow to be set by the genom code.
+
+export port <"$comp"><"[$task name]">BIPState_Port launch_codel(s)
+export port <"$comp">_event_Port finish_codel(e)
+export port Port exec_<"[$task name]">_codel
+export port Port waiting_<"[$task name]">_codel
+
+place S1, S2, S3
+
+initial to S1
+on launch_codel
+   from S1 to S2
+   do {#
+     <"$comp">_<"[$task name]">_report_to_bip = demo_init; // unlikely value to initialize it.
+     <"$comp">_<"[$task name]">_bip_allow = s;
+
+   #}
+
+on exec_<"[$task name]">_codel
+   from S2 to S3
+   provided (bau)
+   do {# 
+
+         while (<"$comp">_<"[$task name]">_report_to_bip == demo_init);
+e = <"$comp">_tcodel_<"$tname">_<"$comp">_start();
+       
+
+printf ("---BIp :  <"$comp">_<"[$task name]">_report_to_bip : %s \n",e);
+
+         bau=false;
+printf ("--BIP_info : <"$tname"> task initialized and running \n");
+ 
+
+       #}
+
+on waiting_<"[$task name]">_codel
+   from S2 to S2
+   provided(!bau)
+  do {# 
+      bau= (!(<"$comp">_<"[$task name]">_bip_allow == s));
+      #}
+
+on finish_codel
+   from S3 to S1
+
+end	//finish the <"[$task name]">Communicate_with_Codel type declaration
+
+<'}'>
+<'}'>
+
+
+<'foreach task [$component tasks] {'>
+// This compute the period of the task <"[$task name]"> in milliseconds
+<' 
+    set ms_period [expr {int([[$task period] value]*1000)}] 
+'> 
+
+atomic type exec_<"[$task name]">Task
+clock x unit millisecond	// The clock to pace the task
+data bool active = false
+
+<'if {[llength [$task fsm]]} {'>
+
+export port Port start_<"[$task name]">_codel
+export port Port finish_<"[$task name]">_codel
+export port Port waiting_<"[$task name]">_codel
+
+<'} else {'> 
+export port Port no_permanent_<"[$task name]">
+<'}'>
+
+<'foreach s [$task services] {'>
+
+export port Port start_<"[$s name]">_codel
+export port Port finish_<"[$s name]">_codel
+export port Port compute_active_<"[$s name]">
+export port Port not_active_<"[$s name]">
+
+<'}'>
+
+port Port finish
+export port Port loopback 
+export port Port missed_deadline 
+
+place Start_permanent, Start
+
+  // the place for the permanent service
+<'if {[llength [$task fsm]]} {'>
+place s2_<"[$task name]">, s3_<"[$task name]">
+<'}'>
+
+  // the place for the service
+<'foreach s [$task services] {'>
+place s1_<"[$s name]">, s2_<"[$s name]">,  s3_<"[$s name]">
+<'}'>
+
+initial to Start_permanent
+
+<'if {[llength [$task fsm]]} {'>
+on start_<"[$task name]">_codel
+  from Start_permanent to s2_<"[$task name]">
+//  when x in [0,<"$ms_period">] delayable
+
+on finish_<"[$task name]">_codel
+  from s2_<"[$task name]"> to Start
+//  when x in [0,<"$ms_period">] delayable
+
+on waiting_<"[$task name]">_codel
+  from Start_permanent to Start
+//  when x in [0,<"$ms_period">] delayable
+
+    <'} else {'>
+
+on no_permanent_<"[$task name]">
+  from Start_permanent to Start
+//  when x in [0,<"$ms_period">] delayable
+    <'}'>
+
+<'set last_place Start'>	// This is to store in last_place the last one (to connect the rest).
+
+
+<'foreach s [$task services] {'>
+on compute_active_<"[$s name]">
+  from <"$last_place"> to s1_<"[$s name]">
+//  when x in [0,<"$ms_period">] delayable
+  do {#
+genom_event cb = demo_init;
+//if (<"$comp">_<"[$s name]">_active == true) {
+
+//printf("--BIP Control Codel : request Accepted \n");
+
+active = <"$comp">_<"[$s name]">_active;
+
+ 
+
+      
+
+      #}
+
+on start_<"[$s name]">_codel
+  from  s1_<"[$s name]"> to s2_<"[$s name]">
+  provided (active)
+
+
+
+
+//  when x in [0,<"$ms_period">] delayable
+
+on finish_<"[$s name]">_codel
+  from s2_<"[$s name]"> to s3_<"[$s name]">
+//  when x in [0,<"$ms_period">] delayable
+
+on not_active_<"[$s name]">
+  from  s1_<"[$s name]"> to s3_<"[$s name]">
+  provided (!active)
+//  when x in [0,<"$ms_period">] delayable
+
+<'set last_place s3_[$s name]'>
+<'}'>
+
+on loopback
+  from  <"$last_place"> to Start_permanent
+  when x in [<"$ms_period">,<"$ms_period">] eager // This is the exact period of this task we should add a 
+  reset x                                         // transition to catch over "duration" or the the BIP Engine 
+                                                  // will deadlock.
+
+on missed_deadline
+  from  <"$last_place"> to Start_permanent
+  when x in [<"$ms_period">+1,_] eager // This is the transition for missed deadline
+  reset x                                         
+  do {#                                           
+  fprintf(stderr,"************** Missed deadline <"$ms_period"> ms for task <"[$task name]">. **************");
+  #}
+
+end
+
+<'}'>
+  // Done with all the exec task
+
+compound type TOP		// The main component declaration
+
+<'foreach task [$component tasks] {'>
+
+component exec_<"[$task name]">Task exec_<"[$task name]">task
+
+<'foreach s [$task services] {'>
+
+component <"$comp"><"[$s name]"> <"$comp"><"[$s name]">_component
+component  <"[$s name]">Communicate_with_Codel  <"[$s name]">communicate_with_codel
+
+
+connector Synchronize_<"$comp"><"[$s name]">BIPState SynchronizeLaunch<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.launch_codel,  <"[$s name]">communicate_with_codel.launch_codel)
+connector Synchronize_<"$comp">_event_finish SynchronizeFinish<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.finish_codel,  <"[$s name]">communicate_with_codel.finish_codel, exec_<"[$task name]">task.finish_<"[$s name]">_codel)
+connector Synchronize_start SynchronizeStart<"[$s name]">start_codel(exec_<"[$task name]">task.start_<"[$s name]">_codel,  <"[$s name]">communicate_with_codel.exec_<"[$s name]">_codel)
+
+connector Singleton single<"$comp"><"[$s name]">(<"$comp"><"[$s name]">_component.stay_in_ether)
+connector Singleton single_cu_<"$comp"><"[$s name]">(exec_<"[$task name]">task.compute_active_<"[$s name]">)
+connector Singleton single_na_<"$comp"><"[$s name]">(exec_<"[$task name]">task.not_active_<"[$s name]">)
+
+
+<'}'>
+
+
+connector Singleton single_<"[$task name]"> (exec_<"[$task name]">task.loopback)
+connector Singleton single_dl_<"[$task name]"> (exec_<"[$task name]">task.missed_deadline)
+
+<'}'>
+
+<'foreach task [$component task] {'>
+<'if {[llength [$task fsm]]} {'>
+
+component <"$comp"><"[$task name]"> <"$comp"><"[$task name]">_component
+component  <"[$task name]">Communicate_with_Codel  <"[$task name]">communicate_with_codel
+
+
+connector Synchronize_<"$comp"><"[$task name]">BIPState SynchronizeLaunch<"$comp"><"[$task name]">(<"$comp"><"[$task name]">_component.launch_codel,  <"[$task name]">communicate_with_codel.launch_codel)
+connector Synchronize_<"$comp">_event_finish SynchronizeFinish<"$comp"><"[$task name]">(<"$comp"><"[$task name]">_component.finish_codel,  <"[$task name]">communicate_with_codel.finish_codel, exec_<"[$task name]">task.finish_<"[$task name]">_codel)
+connector Synchronize_start SynchronizeStart<"[$task name]">start_codel(exec_<"[$task name]">task.start_<"[$task name]">_codel,  <"[$task name]">communicate_with_codel.exec_<"[$task name]">_codel)
+
+connector Synchronize_start SynchronizeStart<"[$task name]">waiting_codel(exec_<"[$task name]">task.waiting_<"[$task name]">_codel,  <"[$task name]">communicate_with_codel.waiting_<"[$task name]">_codel)
+<'} else {'>
+connector Singleton single_np_<"$comp"><"[$s name]">(exec_<"[$task name]">task.no_permanent_<"[$task name]">)
+<'}'>
+
+<'}'>
+
+end
+
+
+component TOP top		// The main component instanciation
+end
